@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import aiohttp
+from aiohttp import web
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -344,12 +345,27 @@ class ProfileView(discord.ui.View):
 
 
 # ────────────────────────────── BOT & COMMANDS ──────────────────────────────
+async def start_web_server() -> None:
+    """Tiny HTTP endpoint so Render sees an open port and an uptime pinger has something to hit"""
+
+    async def health(request: web.Request) -> web.Response:
+        return web.Response(text="ok")
+
+    app = web.Application()
+    app.router.add_get("/", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", "10000")))
+    await site.start()
+
+
 class RobloxBot(commands.Bot):
     def __init__(self) -> None:
         super().__init__(command_prefix="!", intents=discord.Intents.default())
 
     async def setup_hook(self) -> None:
         await roblox.start()
+        await start_web_server()
         await self.tree.sync()
 
     async def close(self) -> None:
@@ -360,7 +376,7 @@ class RobloxBot(commands.Bot):
 bot = RobloxBot()
 
 
-@bot.tree.command(name="profile")
+@bot.tree.command(name="profile", description="View a linked Roblox profile")
 @app_commands.describe(member="Member to look up")
 async def profile_cmd(interaction: discord.Interaction, member: discord.User) -> None:
     target = member
@@ -379,7 +395,7 @@ async def profile_cmd(interaction: discord.Interaction, member: discord.User) ->
     view.message = await interaction.followup.send(embed=overview_embed(data, target), view=view, wait=True)
 
 
-@bot.tree.command(name="search")
+@bot.tree.command(name="search", description="Look up any Roblox player by username")
 @app_commands.describe(username="Roblox username")
 async def search_cmd(interaction: discord.Interaction, username: str) -> None:
     await interaction.response.defer()
@@ -396,7 +412,7 @@ async def search_cmd(interaction: discord.Interaction, username: str) -> None:
     view.message = await interaction.followup.send(embed=overview_embed(data, None), view=view, wait=True)
 
 
-@bot.tree.command(name="link")
+@bot.tree.command(name="link",description="Owner only: link a Discord member to a Roblox account")
 @app_commands.describe(member="Discord member", roblox_username="Roblox username")
 async def link_cmd(interaction: discord.Interaction, member: discord.User, roblox_username: str) -> None:
     if interaction.user.id != OWNER_ID:
